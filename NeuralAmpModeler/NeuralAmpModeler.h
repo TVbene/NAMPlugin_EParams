@@ -45,6 +45,9 @@ enum EParams
   kCalibrateInput,
   kInputCalibrationLevel,
   kOutputMode,
+  // New parameters for file paths
+  kNAMPath, // Added for NAM file path
+  kIRPath,  // Added for IR file path
   kNumParams
 };
 
