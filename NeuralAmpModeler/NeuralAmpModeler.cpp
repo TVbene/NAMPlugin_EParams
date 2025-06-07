@@ -93,6 +93,8 @@ NeuralAmpModeler::NeuralAmpModeler(const InstanceInfo& info)
   GetParam(kCalibrateInput)->InitBool(kCalibrateInputParamName.c_str(), kDefaultCalibrateInput);
   GetParam(kInputCalibrationLevel)
     ->InitDouble(kInputCalibrationLevelParamName.c_str(), kDefaultInputCalibrationLevel, -60.0, 60.0, 0.1, "dBu");
+  GetParam(kNAMPath)->InitString("NAMPath", ""); // Default to empty path
+  GetParam(kIRPath)->InitString("IRPath", "");   // Default to empty path
 
   mNoiseGateTrigger.AddListener(&mNoiseGateGain);
 
@@ -479,6 +481,50 @@ void NeuralAmpModeler::OnParamChange(int paramIdx)
     case kToneBass: mToneStack->SetParam("bass", GetParam(paramIdx)->Value()); break;
     case kToneMid: mToneStack->SetParam("middle", GetParam(paramIdx)->Value()); break;
     case kToneTreble: mToneStack->SetParam("treble", GetParam(paramIdx)->Value()); break;
+    case kNAMPath:
+      {
+        WDL_String newPath;
+        char pathBuffer[1024]; 
+        if (GetParam(kNAMPath)->GetString(pathBuffer, 1024)) 
+        {
+          newPath.Set(pathBuffer); 
+          if (newPath.GetLength())
+          {
+            const std::string errorMsg = _StageModel(newPath);
+            if (!errorMsg.empty())
+            {
+              // Error already handled by _StageModel sending UI messages
+            }
+          }
+          else // Path is empty, treat as clear request
+          {
+            mShouldRemoveModel = true;
+          }
+        }
+      }
+      break;
+    case kIRPath:
+      {
+        WDL_String newPath;
+        char pathBuffer[1024]; 
+        if (GetParam(kIRPath)->GetString(pathBuffer, 1024))
+        {
+          newPath.Set(pathBuffer);
+          if (newPath.GetLength())
+          {
+            const dsp::wav::LoadReturnCode retCode = _StageIR(newPath);
+            if (retCode != dsp::wav::LoadReturnCode::SUCCESS)
+            {
+              // Error already handled by _StageIR sending UI messages
+            }
+          }
+          else // Path is empty, treat as clear request
+          {
+            mShouldRemoveIR = true;
+          }
+        }
+      }
+      break;
     default: break;
   }
 }
@@ -556,6 +602,7 @@ void NeuralAmpModeler::_ApplyDSPStaging()
   {
     mModel = nullptr;
     mNAMPath.Set("");
+    GetParam(kNAMPath)->SetString("");
     mShouldRemoveModel = false;
     mModelCleared = true;
     _UpdateLatency();
@@ -566,6 +613,7 @@ void NeuralAmpModeler::_ApplyDSPStaging()
   {
     mIR = nullptr;
     mIRPath.Set("");
+    GetParam(kIRPath)->SetString("");
     mShouldRemoveIR = false;
   }
   // Move things from staged to live
@@ -697,6 +745,7 @@ std::string NeuralAmpModeler::_StageModel(const WDL_String& modelPath)
     temp->Reset(GetSampleRate(), GetBlockSize());
     mStagedModel = std::move(temp);
     mNAMPath = modelPath;
+    GetParam(kNAMPath)->SetString(mNAMPath.Get());
     SendControlMsgFromDelegate(kCtrlTagModelFileBrowser, kMsgTagLoadedModel, mNAMPath.GetLength(), mNAMPath.Get());
   }
   catch (std::runtime_error& e)
@@ -708,6 +757,7 @@ std::string NeuralAmpModeler::_StageModel(const WDL_String& modelPath)
       mStagedModel = nullptr;
     }
     mNAMPath = previousNAMPath;
+    GetParam(kNAMPath)->SetString(previousNAMPath.Get());
     std::cerr << "Failed to read DSP module" << std::endl;
     std::cerr << e.what() << std::endl;
     return e.what();
@@ -738,6 +788,7 @@ dsp::wav::LoadReturnCode NeuralAmpModeler::_StageIR(const WDL_String& irPath)
   if (wavState == dsp::wav::LoadReturnCode::SUCCESS)
   {
     mIRPath = irPath;
+    GetParam(kIRPath)->SetString(mIRPath.Get());
     SendControlMsgFromDelegate(kCtrlTagIRFileBrowser, kMsgTagLoadedIR, mIRPath.GetLength(), mIRPath.Get());
   }
   else
@@ -747,6 +798,7 @@ dsp::wav::LoadReturnCode NeuralAmpModeler::_StageIR(const WDL_String& irPath)
       mStagedIR = nullptr;
     }
     mIRPath = previousIRPath;
+    GetParam(kIRPath)->SetString(previousIRPath.Get());
     SendControlMsgFromDelegate(kCtrlTagIRFileBrowser, kMsgTagLoadFailed);
   }
 
@@ -913,3 +965,4 @@ void NeuralAmpModeler::_UpdateMeters(sample** inputPointer, sample** outputPoint
 
 // HACK
 #include "Unserialization.cpp"
+
